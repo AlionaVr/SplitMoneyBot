@@ -10,6 +10,9 @@ import org.splitmoneybot.repository.ExpenseRepository;
 import org.splitmoneybot.repository.UserRepository;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class ExpenseService {
@@ -36,9 +39,7 @@ public class ExpenseService {
                 return "Amount must be greater than 0. Please enter a valid amount:";
             }
 
-            ConversationState conversation = conversationStateRepository
-                    .findByChatId(chatId)
-                    .orElseThrow(() -> new IllegalStateException("Conversation state not found"));
+            ConversationState conversation = checkAndGetConversationState(chatId);
 
             conversation.setTempAmount(amount);
             conversation.setState(State.AWAITING_DESCRIPTION);
@@ -51,9 +52,7 @@ public class ExpenseService {
     }
 
     public String processDescription(Long chatId, String description) {
-        ConversationState conversation = conversationStateRepository
-                .findByChatId(chatId)
-                .orElseThrow(() -> new IllegalStateException("Conversation state not found"));
+        ConversationState conversation = checkAndGetConversationState(chatId);
 
         conversation.setTempDescription(description);
         conversation.setState(State.AWAITING_CURRENCY);
@@ -63,31 +62,23 @@ public class ExpenseService {
     }
 
     public String processCurrency(Long chatId, String currency) {
-        ConversationState conversation = conversationStateRepository
-                .findByChatId(chatId)
-                .orElseThrow(() -> new IllegalStateException("Conversation state not found"));
+        ConversationState conversation = checkAndGetConversationState(chatId);
         if (!currency.equalsIgnoreCase("skip")) {
             conversation.setTempCurrency(currency.toUpperCase());
         }
-        AppUser user = userRepository.findByChatId(chatId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        AppUser user = getUserByChatId(chatId);
 
-        Expense expense = new Expense();
-        expense.setPaidBy(user);
-        expense.setAmount(conversation.getTempAmount());
-        expense.setDescription(conversation.getTempDescription());
-        expense.setCurrency(conversation.getTempCurrency());
-        expense.setCreatedAt(java.time.LocalDateTime.now());
+        Expense expense = Expense.builder()
+                .paidBy(user).amount(conversation.getTempAmount())
+                .description(conversation.getTempDescription())
+                .currency(conversation.getTempCurrency())
+                .createdAt(LocalDateTime.now())
+                .build();
 
         expenseRepository.save(expense);
 
         // Сбрасываем состояние
-        conversation.setState(State.IDLE);
-        conversation.setTempAmount(null);
-        conversation.setTempDescription(null);
-        conversation.setTempCurrency(null);
-
-        conversationStateRepository.save(conversation);
+        conversationStateRepository.delete(conversation);
 
         return String.format("Expense created successfully!\n\n" +
                         "Amount: %.2f %s\n" +
@@ -104,5 +95,43 @@ public class ExpenseService {
                 .findByChatId(chatId)
                 .map(ConversationState::getState)
                 .orElse(State.IDLE);
+    }
+
+    private ConversationState checkAndGetConversationState(Long chatId) {
+        return conversationStateRepository
+                .findByChatId(chatId)
+                .orElseThrow(() -> new IllegalStateException("Conversation state not found"));
+    }
+
+    private AppUser getUserByChatId(Long chatId) {
+        return userRepository.findByChatId(chatId)
+                .orElseThrow(() -> new IllegalStateException("User not found for chatId: " + chatId));
+    }
+
+    public String showUserExpenses(Long chatId) {
+        AppUser user = getUserByChatId(chatId);
+        List<Expense> userExpenses = expenseRepository.findAllByPaidBy(user);
+
+        if (userExpenses.isEmpty()) {
+            return "You don't have any expenses yet.\nUse /expense to create one.";
+        }
+
+        StringBuilder message = new StringBuilder("Your expenses:\n\n");
+        double totalAmount = 0;
+
+        for (int i = 0; i < userExpenses.size(); i++) {
+            Expense expense = userExpenses.get(i);
+            message.append(String.format("%d. %.2f %s - %s\n",
+                    i + 1,
+                    expense.getAmount(),
+                    expense.getCurrency(),
+                    expense.getDescription()));
+            totalAmount += expense.getAmount();
+        }
+
+        message.append(String.format("Total: %.2f", totalAmount));
+
+        return message.toString();
+
     }
 }

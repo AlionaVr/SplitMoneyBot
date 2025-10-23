@@ -78,7 +78,10 @@ public class SplitMoneyBot extends TelegramLongPollingBot {
                         expenseService.startExpenseCreation(chatId);
                         String botMessage = "Please enter the expense amount.";
                         sendMsg(chatId, botMessage);
-                    } else {
+                    } else if (message.equals("/myExpenses")) {
+                        String botMessage = expenseService.showUserExpenses(chatId);
+                        sendMsg(chatId, botMessage); }
+                    else {
                         String botMessage = "Sorry, I don't understand.";
                         sendMsg(chatId, botMessage);
                     }
