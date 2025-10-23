@@ -1,0 +1,31 @@
+package org.splitmoneybot.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "expenses")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Expense {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne
+    @JoinColumn(name = "paid_by")
+    private AppUser paidBy;
+
+    private double amount;
+    @Column(name = "currency", nullable = false)
+    private String currency = "USD";
+    private String description;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt = LocalDateTime.now();
+}
