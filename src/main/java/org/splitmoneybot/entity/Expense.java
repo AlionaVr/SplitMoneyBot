@@ -24,8 +24,11 @@ public class Expense {
     private AppUser paidBy;
 
     private double amount;
+
     @Column(name = "currency", nullable = false)
-    private String currency = "USD";
+    @Enumerated(EnumType.STRING)
+    private AppCurrency currency = AppCurrency.EUR;
+
     private String description;
 
     @Column(name = "created_at", nullable = false)

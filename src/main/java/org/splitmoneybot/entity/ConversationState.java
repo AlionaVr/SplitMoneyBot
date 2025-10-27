@@ -26,6 +26,8 @@ public class ConversationState {
     // temporary data storage
     private Double tempAmount;
     private String tempDescription;
-    private String tempCurrency;
+
+    @Enumerated(EnumType.STRING)
+    private AppCurrency tempCurrency;
 
 }
