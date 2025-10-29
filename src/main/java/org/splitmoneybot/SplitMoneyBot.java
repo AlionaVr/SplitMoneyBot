@@ -4,16 +4,21 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.splitmoneybot.components.BotCommands;
 import org.splitmoneybot.components.Buttons;
+import org.splitmoneybot.entity.AppCurrency;
 import org.splitmoneybot.entity.State;
 import org.splitmoneybot.service.ExpenseService;
 import org.splitmoneybot.service.UserService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
+import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.ParseMode;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 @Component
@@ -58,21 +63,44 @@ public class SplitMoneyBot extends TelegramLongPollingBot implements BotCommands
             switch (currentState) {
                 case AWAITING_AMOUNT:
                     String amountResponse = expenseService.processAmount(chatId, receivedMessage);
-                    sendMsg(chatId, amountResponse);
+                    sendMsg(chatId, amountResponse + "\nPlease enter a description for this expense:");
                     return;
 
                 case AWAITING_DESCRIPTION:
                     String descriptionResponse = expenseService.processDescription(chatId, receivedMessage);
-                    sendMsg(chatId, descriptionResponse);
+                    sendMsg(chatId, descriptionResponse + "\nPlease select currency:", Buttons.getCurrencyKeyboard());
                     return;
 
                 case AWAITING_CURRENCY:
-                    sendMsg(chatId, "Please select currency:", Buttons.getCurrencyKeyboard());
+                    if (isCurrency(receivedMessage) || "skip".equalsIgnoreCase(receivedMessage)) {
+                        String response = expenseService.processCurrency(chatId, receivedMessage);
+                        sendMsg(chatId, response, Buttons.getMainMenuKeyboard());
+                    } else {
+                        sendMsg(chatId, "Please select currency:", Buttons.getCurrencyKeyboard());
+                    }
                     return;
                 case IDLE:
                 default:
                     handleIdleState(chatId, receivedMessage);
             }
+        } else if (update.hasCallbackQuery()) {
+            String callbackData = update.getCallbackQuery().getData();
+            long chatId = update.getCallbackQuery().getMessage().getChatId();
+
+            EditMessageReplyMarkup clearKeyboard = EditMessageReplyMarkup.builder()
+                    .chatId(String.valueOf(chatId))
+                    .messageId(update.getCallbackQuery().getMessage().getMessageId())
+                    .replyMarkup(null)
+                    .build();
+            try {
+                execute(clearKeyboard);
+            } catch (TelegramApiException e) {
+                log.warn("Could not clear inline keyboard: " + e.getMessage());
+            }
+
+            answerCallbackQuery(update.getCallbackQuery().getId());
+            String response = expenseService.processCurrency(chatId, callbackData);
+            sendMsg(chatId, response, Buttons.getMainMenuKeyboard());
         }
     }
 
@@ -82,13 +110,13 @@ public class SplitMoneyBot extends TelegramLongPollingBot implements BotCommands
                 String botMessage = "Hello, I'm a bot for splitting expenses.";
                 sendMsg(chatId, botMessage, Buttons.getMainMenuKeyboard());
             }
-            case "/help" -> sendMsg(chatId, HELP_TEXT, Buttons.getMainMenuKeyboard());
-            case "/expense" -> {
+            case "/help", "Help" -> sendMsg(chatId, HELP_TEXT, Buttons.getMainMenuKeyboard());
+            case "/expense", "Add expense" -> {
                 expenseService.startExpenseCreation(chatId);
                 String botMessage = "Please enter the expense amount.";
                 sendMsg(chatId, botMessage, Buttons.getMainMenuKeyboard());
             }
-            case "/myExpenses" -> {
+            case "/myexpenses", "My expenses" -> {
                 String botMessage = expenseService.showUserExpenses(chatId);
                 sendMsg(chatId, botMessage, Buttons.getMainMenuKeyboard());
             }
@@ -105,14 +133,39 @@ public class SplitMoneyBot extends TelegramLongPollingBot implements BotCommands
 
     public void sendMsg(Long chatId, String message, Object keyboard) {
         SendMessage sendMessage = SendMessage.builder()
-                .parseMode(ParseMode.MARKDOWN)
+                .parseMode(ParseMode.MARKDOWNV2)
                 .chatId(chatId)
                 .text(message)
                 .build();
+        if (keyboard instanceof InlineKeyboardMarkup) {
+            sendMessage.setReplyMarkup((InlineKeyboardMarkup) keyboard);
+        } else if (keyboard instanceof ReplyKeyboardMarkup) {
+            sendMessage.setReplyMarkup((ReplyKeyboardMarkup) keyboard);
+        }
+
         try {
             execute(sendMessage);
         } catch (TelegramApiException e) {
             log.error("Exception during sending message: " + e.getMessage());
+        }
+    }
+
+    private void answerCallbackQuery(String callbackId) {
+        AnswerCallbackQuery answer = new AnswerCallbackQuery();
+        answer.setCallbackQueryId(callbackId);
+        try {
+            execute(answer);
+        } catch (TelegramApiException e) {
+            log.error("Failed to answer callback query: " + e.getMessage());
+        }
+    }
+
+    private boolean isCurrency(String s) {
+        try {
+            AppCurrency.valueOf(s.toUpperCase());
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 }

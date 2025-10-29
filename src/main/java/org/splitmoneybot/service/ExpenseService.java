@@ -1,10 +1,7 @@
 package org.splitmoneybot.service;
 
 import lombok.RequiredArgsConstructor;
-import org.splitmoneybot.entity.AppUser;
-import org.splitmoneybot.entity.ConversationState;
-import org.splitmoneybot.entity.Expense;
-import org.splitmoneybot.entity.State;
+import org.splitmoneybot.entity.*;
 import org.splitmoneybot.repository.ConversationStateRepository;
 import org.splitmoneybot.repository.ExpenseRepository;
 import org.splitmoneybot.repository.UserRepository;
@@ -45,7 +42,7 @@ public class ExpenseService {
             conversation.setState(State.AWAITING_DESCRIPTION);
             conversationStateRepository.save(conversation);
 
-            return "Amount recorded: " + amount + "\nPlease enter a description for this expense:";
+            return "Amount recorded: " + amount;
         } catch (NumberFormatException e) {
             return "Invalid amount format. Please enter a valid number:";
         }
@@ -57,14 +54,14 @@ public class ExpenseService {
         conversation.setTempDescription(description);
         conversation.setState(State.AWAITING_CURRENCY);
         conversationStateRepository.save(conversation);
-        return "Description recorded: " + description +
-                "\nPlease enter currency (or type 'skip' to use USD):";
+        return "Description recorded: " + description;
     }
 
-    public String processCurrency(Long chatId, String currency) {
+    public String processCurrency(Long chatId, String currencyString) {
         ConversationState conversation = checkAndGetConversationState(chatId);
-        if (!currency.equalsIgnoreCase("skip")) {
-            conversation.setTempCurrency(currency.toUpperCase());
+        if (!currencyString.equalsIgnoreCase("skip")) {
+            AppCurrency currency = AppCurrency.valueOf(currencyString.toUpperCase());
+            conversation.setTempCurrency(currency);
         }
         AppUser user = getUserByChatId(chatId);
 
@@ -77,7 +74,6 @@ public class ExpenseService {
 
         expenseRepository.save(expense);
 
-        // Сбрасываем состояние
         conversationStateRepository.delete(conversation);
 
         return String.format("Expense created successfully!\n\n" +

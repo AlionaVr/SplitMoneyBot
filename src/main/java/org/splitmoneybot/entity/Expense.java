@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -23,7 +24,7 @@ public class Expense {
     @JoinColumn(name = "paid_by")
     private AppUser paidBy;
 
-    private double amount;
+    private BigDecimal amount;
 
     @Column(name = "currency", nullable = false)
     @Enumerated(EnumType.STRING)
